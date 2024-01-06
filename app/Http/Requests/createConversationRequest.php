@@ -26,7 +26,7 @@ class createConversationRequest extends FormRequest
         return [
             //
             'unique_id' => 'required|numeric',
-            'message' => 'required|string'
+            'message' => 'string|min:1',
 
         ];
     }

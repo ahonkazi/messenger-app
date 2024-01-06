@@ -8,3 +8,14 @@ function SendMail($subject,$data,$view,$to){
         return false;
     }
 }
+
+function UploadFile($prefix = 'messenger-img', $file, $path = 'files')
+{
+    $fileName = $prefix . random_int(111111, 9999999) . time() . '.' . $file->getClientOriginalExtension();
+    $uploadStatus = $file->storeAs($path, $fileName, 'public');
+    if ($uploadStatus) {
+        return '/' . $path . '/' . $fileName;
+    } else {
+        return false;
+    }
+}

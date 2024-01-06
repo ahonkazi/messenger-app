@@ -183,7 +183,5 @@ class UserAuthController extends Controller
        }
     }
     
-    public function test(){
-        return response()->json(['data'=>now()->timestamp -Auth::user()->created_at->timestamp ]);
-    }
+    
 }

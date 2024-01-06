@@ -26,7 +26,6 @@ Route::prefix('/user')->group(function () {
         Route::post('/auth-info', [\App\Http\Controllers\UserAuthController::class, 'authInfo']);
         Route::put('/update-active-log', [\App\Http\Controllers\UserAuthController::class, 'UpdateActiveLog']);
         Route::get('/get-user', [\App\Http\Controllers\UserAuthController::class, 'getUser']);
-        Route::get('/create-conversation', [\App\Http\Controllers\MessageController::class, 'createConversation']);
     });
 
 });
@@ -34,7 +33,7 @@ Route::prefix('/user')->group(function () {
 Route::prefix('/message')->group(function () {
 
     Route::middleware(['withAuth'])->group(function () {
-        Route::post('/conversation/create', [\App\Http\Controllers\MessageController::class, 'createConversation']);
+        Route::post('/conversation/create', [\App\Http\Controllers\MessageController::class, 'sendMessage']);
            
     });
 
