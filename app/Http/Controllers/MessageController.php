@@ -25,7 +25,6 @@ class MessageController extends Controller
             $conversation_text = $request->message;
         } else {
             if ($request->hasFile('files')) {
-
                 $accepted_images = ['png', 'jpg', 'jpeg', 'webp'];
                 $file_len = count($request->file('files'));
                 if ($file_len > 1) {
@@ -81,8 +80,14 @@ class MessageController extends Controller
                         return response()->json(['status' => false, 'message' => 'Something went wrong']);
                     }
                 } else {
+                    $date1 = new \DateTime($senderMessageContainer->created_at->format('y-m-d'));
+                    $date2 = new \DateTime(now()->format('y-m-d'));
+
+                    $interval = $date1->diff($date2);
+                    $differenceInDays = $interval->days;
                     if ($receiverMessageContainer) {
-                        if ((now()->timestamp - $senderMessageContainer->created_at->timestamp > 86400) || ($receiverMessageContainer->id > $senderMessageContainer->id)) {
+
+                        if (($differenceInDays > 1) || ($receiverMessageContainer->id > $senderMessageContainer->id)) {
                             $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
@@ -119,7 +124,7 @@ class MessageController extends Controller
                             }
                         }
                     } else {
-                        if ((now()->timestamp - $senderMessageContainer->created_at->timestamp > 86400)) {
+                        if ($differenceInDays > 1) {
                             $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
@@ -203,13 +208,16 @@ class MessageController extends Controller
 
     function createNewMessage($request, $sender_id, $receiver_id)
     {
-        $messageStatus = Message::create([
-            'sender_id' => $sender_id,
-            'receiver_id' => $receiver_id
-        ]);
-
+//        $messageStatus = Message::create([
+//            'sender_id' => $sender_id,
+//            'receiver_id' => $receiver_id
+//        ]);
+        $messageStatus = new Message();
+        $messageStatus->sender_id = $sender_id;
+        $messageStatus->receiver_id = $receiver_id;
+        $setMessaged = $messageStatus->save();
         try {
-            if ($messageStatus) {
+            if ($setMessaged) {
                 $singleMessage = new SingleMessage();
                 $singleMessage->message_id = $messageStatus->id;
                 if ($request->has('message')) {
@@ -224,43 +232,43 @@ class MessageController extends Controller
                         $accepted_images = ['png', 'jpg', 'jpeg', 'webp'];
                         foreach ($request->file('files') as $file) {
                             $extension = $file->getClientOriginalExtension();
-                            if (in_array($extension, $accepted_files)) {
-                                $file_type = '';
-                                $file_path = '';
-                                if (in_array($extension, $accepted_images)) {
-                                    $file_type = 'image';
-                                    $file_path = 'images';
-                                } elseif ($extension == 'mp4') {
-                                    $file_type = 'video';
-                                    $file_path = 'videos';
-                                } elseif ($extension == 'mp3') {
-                                    $file_type = 'audio';
-                                    $file_path = 'audios';
-                                } elseif ($extension == 'pdf') {
-                                    $file_type = 'pdf';
-                                    $file_path = 'documents';
-                                }
-                                $uploaded_file = UploadFile('messenger-' . $file_type.'-', $file, $file_path);
-                                if ($uploaded_file) {
-                                    $media = new Media();
-                                    $media->file_type = $file_type;
-                                    $media->url = $uploaded_file;
-                                    $media->sender_id = $sender_id;
-                                    $media->receiver_id = $receiver_id;
-                                    $file_set_status = $media->save();
-                                    if ($file_set_status) {
-                                        $message_file = new MessageFile();
-                                        $message_file->single_message_id = $singleMessage->id;
-                                        $message_file->file_type = $file_type;
-                                        $message_file->media_id = $media->id;
-                                        $message_file->save();
-
-                                    }
-
-                                }
+                            $file_type = '';
+                            $file_path = '';
+                            if (in_array($extension, $accepted_images)) {
+                                $file_type = 'image';
+                                $file_path = 'images';
+                            } elseif ($extension == 'mp4') {
+                                $file_type = 'video';
+                                $file_path = 'videos';
+                            } elseif ($extension == 'mp3') {
+                                $file_type = 'audio';
+                                $file_path = 'audios';
+                            } elseif ($extension == 'pdf') {
+                                $file_type = 'pdf';
+                                $file_path = 'documents';
                             } else {
-                                return false;
+                                $file_type = 'document';
+                                $file_path = 'documents';
                             }
+                            $uploaded_file = UploadFile('messenger-' . $file_type . '-', $file, $file_path);
+                            if ($uploaded_file) {
+                                $media = new Media();
+                                $media->file_type = $file_type;
+                                $media->url = $uploaded_file;
+                                $media->sender_id = $sender_id;
+                                $media->receiver_id = $receiver_id;
+                                $file_set_status = $media->save();
+                                if ($file_set_status) {
+                                    $message_file = new MessageFile();
+                                    $message_file->single_message_id = $singleMessage->id;
+                                    $message_file->file_type = $file_type;
+                                    $message_file->media_id = $media->id;
+                                    $message_file->save();
+
+                                }
+
+                            }
+
                         }
                         $singleMessage->has_file = true;
                         $singleMessage->save();
@@ -269,6 +277,7 @@ class MessageController extends Controller
                     }
 
                 } else {
+                    $messageStatus->delete();
                     return false;
 
                 }
@@ -302,43 +311,43 @@ class MessageController extends Controller
                     $accepted_images = ['png', 'jpg', 'jpeg', 'webp'];
                     foreach ($request->file('files') as $file) {
                         $extension = $file->getClientOriginalExtension();
-                        if (in_array($extension, $accepted_files)) {
-                            $file_type = '';
-                            $file_path = '';
-                            if (in_array($extension, $accepted_images)) {
-                                $file_type = 'image';
-                                $file_path = 'images';
-                            } elseif ($extension == 'mp4') {
-                                $file_type = 'video';
-                                $file_path = 'videos';
-                            } elseif ($extension == 'mp3') {
-                                $file_type = 'audio';
-                                $file_path = 'audios';
-                            } elseif ($extension == 'pdf') {
-                                $file_type = 'pdf';
-                                $file_path = 'documents';
-                            }
-                            $uploaded_file = UploadFile('messenger-' . $file_type.'-', $file, $file_path);
-                            if ($uploaded_file) {
-                                $media = new Media();
-                                $media->file_type = $file_type;
-                                $media->url = $uploaded_file;
-                                $media->sender_id = $sender_id;
-                                $media->receiver_id = $receiver_id;
-                                $file_set_status = $media->save();
-                                if ($file_set_status) {
-                                    $message_file = new MessageFile();
-                                    $message_file->single_message_id = $singleMessage->id;
-                                    $message_file->file_type = $file_type;
-                                    $message_file->media_id = $media->id;
-                                    $message_file->save();
-
-                                }
-
-                            }
+                        $file_type = '';
+                        $file_path = '';
+                        if (in_array($extension, $accepted_images)) {
+                            $file_type = 'image';
+                            $file_path = 'images';
+                        } elseif ($extension == 'mp4') {
+                            $file_type = 'video';
+                            $file_path = 'videos';
+                        } elseif ($extension == 'mp3') {
+                            $file_type = 'audio';
+                            $file_path = 'audios';
+                        } elseif ($extension == 'pdf') {
+                            $file_type = 'pdf';
+                            $file_path = 'documents';
                         } else {
-                            return false;
+                            $file_type = 'document';
+                            $file_path = 'documents';
                         }
+                        $uploaded_file = UploadFile('messenger-' . $file_type . '-', $file, $file_path);
+                        if ($uploaded_file) {
+                            $media = new Media();
+                            $media->file_type = $file_type;
+                            $media->url = $uploaded_file;
+                            $media->sender_id = $sender_id;
+                            $media->receiver_id = $receiver_id;
+                            $file_set_status = $media->save();
+                            if ($file_set_status) {
+                                $message_file = new MessageFile();
+                                $message_file->single_message_id = $singleMessage->id;
+                                $message_file->file_type = $file_type;
+                                $message_file->media_id = $media->id;
+                                $message_file->save();
+
+                            }
+
+                        }
+
                     }
                     $singleMessage->has_file = true;
                     $singleMessage->save();
