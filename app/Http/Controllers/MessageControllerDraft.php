@@ -15,6 +15,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use function PHPUnit\Framework\isEmpty;
 
 class MessageControllerDraft extends Controller
 {
@@ -464,29 +465,42 @@ class MessageControllerDraft extends Controller
         foreach ($removedMessages as $mgs) {
             array_push($removedMessagesIds, $mgs->single_message_id);
         }
-        $messages = Message::with(['singleMessages' => function ($query) use ($removedMessagesIds, $removedMessageFilesIds,$participant) {
+        $messages = Message::with(['singleMessages' => function ($query) use ($removedMessagesIds, $removedMessageFilesIds, $participant) {
             $query->whereNotIn('id', $removedMessagesIds)
-            ->where('id', '>', $participant->last_deleted_message_id)
-            ->with(['messageFiles' => function ($query) use ($removedMessageFilesIds) {
-                $query->whereNotIn('id', $removedMessageFilesIds)
-                    ->with('media')->latest();
-            }])->latest();
+                ->where('id', '>', $participant->last_deleted_message_id)
+                ->with(['messageFiles' => function ($query) use ($removedMessageFilesIds) {
+                    $query->whereNotIn('id', $removedMessageFilesIds)
+                        ->with('media')->latest();
+                }])->latest();
 
-        }])->where(function ($query) use ($user_id, $partner) {
+        }])->
+        where(function ($query) use ($user_id, $partner) {
             $query->where(['sender_id' => $user_id, 'receiver_id' => $partner->id])
                 ->orWhere(['sender_id' => $partner->id, 'receiver_id' => $user_id]);
         })
+            ->whereHas('singleMessages')
             ->latest()
             ->skip($skip)
             ->limit($limit)
             ->get();
-        $messagesByDate = [];
+
+        $data = [];
         foreach ($messages as $message) {
             $date = $message->created_at->format('Y-m-d'); // Format date as needed
-            $messagesByDate[$date][] = $message; // Append message to the corresponding date group
+
+            // Find or create the date object within the data array:
+            $dateIndex = array_search($date, array_column($data, 'date'));
+            if ($dateIndex === false) {
+                $data[] = ['date' => $date, 'messages' => []];
+                $dateIndex = count($data) - 1;
+            }
+
+            // Add the message to the corresponding date's messages:
+            $data[$dateIndex]['messages'][] = $message;
+
         }
 
-        return response()->json(['status' => true, 'messages' => $messagesByDate, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
+        return response()->json(['status' => true, 'data' => $data, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
 
     }
 

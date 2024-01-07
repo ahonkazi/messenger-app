@@ -490,7 +490,7 @@ class MessageController extends Controller
 
         foreach ($messages as $message) {
             $date = $message->created_at->format('Y-m-d'); // Format date as needed
-    $messagesByDate[$date][] = $message; // Append message to the corresponding date group
+        $messagesByDate[$date][] = $message; // Append message to the corresponding date group
         }
 
     return response()->json(['status' => true, 'messages' => $messagesByDate, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
