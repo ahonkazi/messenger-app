@@ -14,7 +14,9 @@ class SingleMessage extends Model
         "message",
         "message_status",
         "unsent",
-        "has_file"
+        "has_file",
+        "sender_id",
+        "receiver_id"
     ];
 
     public function messageFiles()

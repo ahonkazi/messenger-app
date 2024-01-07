@@ -22,11 +22,11 @@ Route::prefix('/user')->group(function () {
 Route::prefix('/message')->group(function () {
 
     Route::middleware(['withAuth'])->group(function () {
-        Route::post('/send', [\App\Http\Controllers\MessageController::class, 'sendMessage']);
-        Route::delete('/delete/{id}', [\App\Http\Controllers\MessageController::class, 'deleteForMe']);
-        Route::delete('/delete/file/{id}', [\App\Http\Controllers\MessageController::class, 'deleteFileForMe']);
-        Route::get('/messages/{unique_id}', [\App\Http\Controllers\MessageController::class, 'messageList']);
-        Route::delete('/conversation/clear/{unique_id}', [\App\Http\Controllers\MessageController::class, 'clearConversationForMe']);
+        Route::post('/send', [\App\Http\Controllers\MessageControllerDraft::class, 'sendMessage']);
+        Route::delete('/delete/{id}', [\App\Http\Controllers\MessageControllerDraft::class, 'deleteForMe']);
+        Route::delete('/delete/file/{id}', [\App\Http\Controllers\MessageControllerDraft::class, 'deleteFileForMe']);
+        Route::get('/messages/{unique_id}', [\App\Http\Controllers\MessageControllerDraft::class, 'messageList']);
+        Route::delete('/conversation/clear/{unique_id}', [\App\Http\Controllers\MessageControllerDraft::class, 'clearConversationForMe']);
 
     });
 
