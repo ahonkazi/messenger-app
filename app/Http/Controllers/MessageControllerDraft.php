@@ -439,7 +439,7 @@ class MessageControllerDraft extends Controller
 
 //get all messages
     public
-    function messageList(Request $request, $unique_id): JsonResponse
+    function messageList(Request $request, $unique_id)
     {
         $user_id = Auth::user()->id;
         $partner = User::where('unique_id', $unique_id)->first();
@@ -484,8 +484,15 @@ class MessageControllerDraft extends Controller
             ->limit($limit)
             ->get();
 
+        $filteredData = [];
+
+        for ($i = 0; $i < count($messages); $i++) {
+            if (count($messages[$i]->singleMessages)) {
+                array_push($filteredData, $messages[$i]);
+            }
+        }
         $data = [];
-        foreach ($messages as $message) {
+        foreach ($filteredData as $message) {
             $date = $message->created_at->format('Y-m-d'); // Format date as needed
 
             // Find or create the date object within the data array:
@@ -494,15 +501,16 @@ class MessageControllerDraft extends Controller
                 $data[] = ['date' => $date, 'messages' => []];
                 $dateIndex = count($data) - 1;
             }
-
             // Add the message to the corresponding date's messages:
             $data[$dateIndex]['messages'][] = $message;
-
         }
 
-        return response()->json(['status' => true, 'data' => $data, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
 
+//return count($messages[1]->singleMessages);
+        return response()->json(['status' => true, 'data' => $data, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
+//
     }
+
 
 //    clear messages
     public
@@ -542,4 +550,5 @@ class MessageControllerDraft extends Controller
         return $saveStatus;
 
     }
+
 }
