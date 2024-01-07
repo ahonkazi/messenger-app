@@ -3,17 +3,6 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| API Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group. Make something great!
-|
-*/
-
 Route::prefix('/user')->group(function () {
     Route::middleware(['authLess'])->group(function () {
         Route::post('/signup-otp', [\App\Http\Controllers\UserAuthController::class, 'sendSignupOtp']);
@@ -33,8 +22,11 @@ Route::prefix('/user')->group(function () {
 Route::prefix('/message')->group(function () {
 
     Route::middleware(['withAuth'])->group(function () {
-        Route::post('/conversation/create', [\App\Http\Controllers\MessageController::class, 'sendMessage']);
-           
+        Route::post('/send', [\App\Http\Controllers\MessageController::class, 'sendMessage']);
+        Route::delete('/delete/{id}', [\App\Http\Controllers\MessageController::class, 'deleteForMe']);
+        Route::delete('/delete/file/{id}', [\App\Http\Controllers\MessageController::class, 'deleteFileForMe']);
+        Route::get('/messages', [\App\Http\Controllers\MessageController::class, 'messageList']);
+
     });
 
 });

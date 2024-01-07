@@ -5,18 +5,21 @@ namespace App\Http\Controllers;
 use App\Http\Requests\createConversationRequest;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
+use App\Models\DeleteMessage;
+use App\Models\DeleteMessageFile;
 use App\Models\Media;
 use App\Models\Message;
 use App\Models\MessageFile;
 use App\Models\SingleMessage;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class MessageController extends Controller
 {
-    //
-    public function sendMessage(createConversationRequest $request)
+    //send message
+    public function sendMessage(createConversationRequest $request): JsonResponse
     {
         $conversation_text = '';
         if (!$request->hasFile('files') && !$request->has('message')) {
@@ -106,7 +109,7 @@ class MessageController extends Controller
                             }
                         } else {
 
-                            $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id, $conversation_text);
+                            $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id);
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
                                 $old_conversation->message_time = now();
@@ -143,7 +146,7 @@ class MessageController extends Controller
                             }
                         } else {
 
-                            $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id, $conversation_text);
+                            $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id);
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
                                 $old_conversation->message_time = now();
@@ -206,7 +209,8 @@ class MessageController extends Controller
         }
     }
 
-    function createNewMessage($request, $sender_id, $receiver_id)
+//create new message and singlemessage
+    function createNewMessage($request, $sender_id, $receiver_id): bool
     {
 //        $messageStatus = Message::create([
 //            'sender_id' => $sender_id,
@@ -292,7 +296,8 @@ class MessageController extends Controller
 
     }
 
-    function createSingleMessage($request, $sender_id, $receiver_id, $message_id)
+//    message exists so create only single message
+    function createSingleMessage($request, $sender_id, $receiver_id, $message_id): bool
     {
 
         try {
@@ -368,10 +373,92 @@ class MessageController extends Controller
 
     }
 
-    public function test(Request $request)
+//    delete for me
+    public function deleteForMe(Request $request, $id): JsonResponse
     {
-        return response()->json(['data' => $request->files]);
+        $user_id = Auth::user()->id;
+        $message = SingleMessage::where('id', $id)->first();
+        if ($message) {
+            $DeleteMessaged = DeleteMessage::where('single_message_id', $message->id)->where('participant_id', $user_id)->first();
+            if ($DeleteMessaged == null) {
+                $deleted = DeleteMessage::create([
+                    'single_message_id' => $message->id,
+                    'participant_id' => $user_id
+                ]);
+                if ($deleted) {
+                    return response()->json(['status' => true, 'message' => 'Deleted'], 200);
+
+                } else {
+                    return response()->json(['status' => false, 'message' => 'Something went wrong'], 500);
+
+                }
+            } else {
+                return response()->json(['status' => false, 'message' => 'Something went wrong'], 500);
+
+            }
+        } else {
+            return response()->json(['status' => false, 'message' => 'No message found.'], 404);
+
+        }
     }
 
+//    delete file for me
+    public function deleteFileForMe(Request $request, $id): JsonResponse
+    {
+        $user_id = Auth::user()->id;
+        $message = MessageFile::where('id', $id)->first();
+        if ($message) {
+            $DeleteMessaged = DeleteMessageFile::where('message_file_id', $message->id)->where('participant_id', $user_id)->first();
+            if ($DeleteMessaged == null) {
+                $deleted = DeleteMessageFile::create([
+                    'message_file_id' => $message->id,
+                    'participant_id' => $user_id
+                ]);
+                if ($deleted) {
+                    return response()->json(['status' => true, 'message' => 'Deleted'], 200);
 
+                } else {
+                    return response()->json(['status' => false, 'message' => 'Something went wrong'], 500);
+
+                }
+            } else {
+                return response()->json(['status' => false, 'message' => 'Something went wrong'], 500);
+
+            }
+        } else {
+            return response()->json(['status' => false, 'message' => 'No file found.'], 404);
+
+        }
+    }
+
+//get all messages
+    public function messageList(Request $request): JsonResponse
+    {
+        $user_id = Auth::user()->id;
+        $removedMessages = DeleteMessage::all()->where('participant_id', $user_id);
+        $removedMessagesIds = [];
+        $removedMessageFiles = DeleteMessageFile::all()->where('participant_id', $user_id);
+        $removedMessageFilesIds = [];
+        $limit = (int)$request->input('per_page', 2);
+        $offset = (int)$request->input('page', 1);
+        $skip = $limit * ($offset - 1);
+        foreach ($removedMessageFiles as $mgsFile) {
+            array_push($removedMessageFilesIds, $mgsFile->message_file_id);
+        }
+        foreach ($removedMessages as $mgs) {
+            array_push($removedMessagesIds, $mgs->single_message_id);
+        }
+        $messages = Message::with(['singleMessages' => function ($query) use ($removedMessagesIds, $removedMessageFilesIds) {
+            $query->whereNotIn('id', $removedMessagesIds)->with(['messageFiles' => function ($query) use ($removedMessageFilesIds) {
+                $query->whereNotIn('id', $removedMessageFilesIds)
+                    ->with('media')->latest();
+            }])->latest();
+
+        }])
+            ->where('sender_id', $user_id)
+            ->orWhere('receiver_id', $user_id)
+            ->latest()->skip($skip)->limit($limit)->get();
+        return response()->json(['status' => true, 'messages' => $messages, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
+
+    }
 }

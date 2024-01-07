@@ -8,5 +8,13 @@ use Illuminate\Database\Eloquent\Model;
 class Message extends Model
 {
     use HasFactory;
-    protected $fillable = ["sender_id","receiver_id"];
+
+    protected $fillable = ["sender_id", "receiver_id"];
+
+    public function singleMessages()
+    {
+        return $this->hasMany(SingleMessage::class);
+    }
+
+   
 }

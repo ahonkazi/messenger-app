@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class SingleMessage extends Model
 {
     use HasFactory;
+
     protected $fillable = [
         "message_id",
         "message",
@@ -15,4 +16,9 @@ class SingleMessage extends Model
         "unsent",
         "has_file"
     ];
+
+    public function messageFiles()
+    {
+       return $this->hasMany(MessageFile::class);
+    }
 }

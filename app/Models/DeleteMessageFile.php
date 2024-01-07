@@ -5,11 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class DeleteMessage extends Model
+class DeleteMessageFile extends Model
 {
     use HasFactory;
     protected $fillable=[
-        "single_message_id",
+        "message_file_id",
         "participant_id"
     ];
 }
