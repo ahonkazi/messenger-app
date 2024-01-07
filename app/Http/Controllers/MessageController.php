@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\createConversationRequest;
+use App\Http\Requests\MessageGetRequest;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\DeleteMessage;
@@ -15,6 +16,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class MessageController extends Controller
 {
@@ -83,14 +85,20 @@ class MessageController extends Controller
                         return response()->json(['status' => false, 'message' => 'Something went wrong']);
                     }
                 } else {
+
+
                     $date1 = new \DateTime($senderMessageContainer->created_at->format('y-m-d'));
                     $date2 = new \DateTime(now()->format('y-m-d'));
 
                     $interval = $date1->diff($date2);
                     $differenceInDays = $interval->days;
-                    if ($receiverMessageContainer) {
 
-                        if (($differenceInDays > 1) || ($receiverMessageContainer->id > $senderMessageContainer->id)) {
+                    if ($receiverMessageContainer) {
+                        $participant = ConversationParticipant::where('conversation_id', $old_conversation->id)->where('participant_id', $sender_id)->first();
+                        $last_message = Message::where(['sender_id' => $sender_id, 'receiver_id' => $receiver_id])
+                            ->orWhere(['sender_id' => $receiver_id, 'receiver_id' => $sender_id])->latest()->first();
+
+                        if (($differenceInDays > 1) || ($receiverMessageContainer->id > $senderMessageContainer->id) || ($participant->last_deleted_message_id == $last_message->id)) {
                             $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
@@ -127,7 +135,11 @@ class MessageController extends Controller
                             }
                         }
                     } else {
-                        if ($differenceInDays > 1) {
+                        $participant = ConversationParticipant::where('conversation_id', $old_conversation->id)->where('participant_id', $sender_id)->first();
+                        $last_message = Message::where(['sender_id' => $sender_id, 'receiver_id' => $receiver_id])
+                            ->orWhere(['sender_id' => $receiver_id, 'receiver_id' => $sender_id])->latest()->first();
+
+                        if ($differenceInDays > 1 || ($participant->last_deleted_message_id == $last_message->id)) {
                             $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
@@ -164,8 +176,6 @@ class MessageController extends Controller
                             }
                         }
                     }
-
-
                 }
 
 
@@ -374,7 +384,8 @@ class MessageController extends Controller
     }
 
 //    delete for me
-    public function deleteForMe(Request $request, $id): JsonResponse
+    public
+    function deleteForMe(Request $request, $id): JsonResponse
     {
         $user_id = Auth::user()->id;
         $message = SingleMessage::where('id', $id)->first();
@@ -403,7 +414,8 @@ class MessageController extends Controller
     }
 
 //    delete file for me
-    public function deleteFileForMe(Request $request, $id): JsonResponse
+    public
+    function deleteFileForMe(Request $request, $id): JsonResponse
     {
         $user_id = Auth::user()->id;
         $message = MessageFile::where('id', $id)->first();
@@ -432,9 +444,20 @@ class MessageController extends Controller
     }
 
 //get all messages
-    public function messageList(Request $request): JsonResponse
+    public
+    function messageList(Request $request, $unique_id): JsonResponse
     {
         $user_id = Auth::user()->id;
+        $partner = User::where('unique_id', $unique_id)->first();
+        if ($partner == null) {
+            return response()->json(['status' => false, 'messages' => 'No partner found'], 200);
+        }
+        $conversation = Conversation::where(['first_participant' => $user_id, 'second_participant' => $partner->id])
+            ->orWhere(['first_participant' => $partner->id, 'second_participant' => $user_id])->first();
+        if ($conversation == null) {
+            return response()->json(['status' => false, 'messages' => 'No Conversation found,please create one'], 200);
+        }
+        $participant = ConversationParticipant::where('conversation_id', $conversation->id)->where('participant_id', $user_id)->first();
         $removedMessages = DeleteMessage::all()->where('participant_id', $user_id);
         $removedMessagesIds = [];
         $removedMessageFiles = DeleteMessageFile::all()->where('participant_id', $user_id);
@@ -454,11 +477,62 @@ class MessageController extends Controller
                     ->with('media')->latest();
             }])->latest();
 
-        }])
-            ->where('sender_id', $user_id)
-            ->orWhere('receiver_id', $user_id)
-            ->latest()->skip($skip)->limit($limit)->get();
-        return response()->json(['status' => true, 'messages' => $messages, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
+        }])->where(function ($query) use ($user_id, $partner) {
+            $query->where(['sender_id' => $user_id, 'receiver_id' => $partner->id])
+                ->orWhere(['sender_id' => $partner->id, 'receiver_id' => $user_id]);
+        })
+            ->where('id', '>', $participant->last_deleted_message_id)
+            ->latest()
+            ->skip($skip)
+            ->limit($limit)
+            ->get();
+        $messagesByDate = [];
+
+        foreach ($messages as $message) {
+            $date = $message->created_at->format('Y-m-d'); // Format date as needed
+    $messagesByDate[$date][] = $message; // Append message to the corresponding date group
+        }
+
+    return response()->json(['status' => true, 'messages' => $messagesByDate, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
+
+    }
+
+//    clear messages
+    public
+    function clearConversationForMe(Request $request, $unique_id): JsonResponse
+    {
+        $user_id = Auth::user()->id;
+        $partner = User::where('unique_id', $unique_id)->first();
+        if ($partner == null) {
+            return response()->json(['status' => false, 'messages' => 'No partner found'], 200);
+        }
+        $conversation = Conversation::where(['first_participant' => $user_id, 'second_participant' => $partner->id])
+            ->orWhere(['first_participant' => $partner->id, 'second_participant' => $user_id])->first();
+        if ($conversation == null) {
+            return response()->json(['status' => false, 'messages' => 'No Conversation found,please create one'], 200);
+        }
+        $clearStatus = $this->clearConversation($user_id, $partner, $conversation);
+        if ($clearStatus) {
+            return response()->json(['status' => true, 'messages' => 'Conversation cleared'], 200);
+
+        } else {
+            return response()->json(['status' => false, 'messages' => 'Something went wrong'], 500);
+
+        }
+
+    }
+
+
+    function clearConversation($user_id, $partner, $conversation): bool
+    {
+
+
+        $participant = ConversationParticipant::where('conversation_id', $conversation->id)->where('participant_id', $user_id)->first();
+        $last_message = Message::where(['sender_id' => $user_id, 'receiver_id' => $partner->id])
+            ->orWhere(['sender_id' => $partner->id, 'receiver_id' => $user_id])->latest()->first();
+        $participant->last_deleted_message_id = $last_message->id;
+        $saveStatus = $participant->save();
+        return $saveStatus;
 
     }
 }

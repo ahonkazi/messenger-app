@@ -8,5 +8,5 @@ use Illuminate\Database\Eloquent\Model;
 class ConversationParticipant extends Model
 {
     use HasFactory;
-    protected $fillable = ["conversation_id","participant_id","last_typing"];
+    protected $fillable = ["conversation_id","participant_id","last_typing","last_deleted_message_id"];
 }
