@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\createConversationRequest;
-use App\Http\Requests\MessageGetRequest;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
 use App\Models\DeleteMessage;
@@ -16,7 +15,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
+use function PHPUnit\Framework\isEmpty;
 
 class MessageController extends Controller
 {
@@ -94,11 +93,8 @@ class MessageController extends Controller
                     $differenceInDays = $interval->days;
 
                     if ($receiverMessageContainer) {
-                        $participant = ConversationParticipant::where('conversation_id', $old_conversation->id)->where('participant_id', $sender_id)->first();
-                        $last_message = Message::where(['sender_id' => $sender_id, 'receiver_id' => $receiver_id])
-                            ->orWhere(['sender_id' => $receiver_id, 'receiver_id' => $sender_id])->latest()->first();
 
-                        if (($differenceInDays > 1) || ($receiverMessageContainer->id > $senderMessageContainer->id) || ($participant->last_deleted_message_id == $last_message->id)) {
+                        if (($differenceInDays > 1) || ($receiverMessageContainer->id > $senderMessageContainer->id)) {
                             $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
@@ -135,11 +131,7 @@ class MessageController extends Controller
                             }
                         }
                     } else {
-                        $participant = ConversationParticipant::where('conversation_id', $old_conversation->id)->where('participant_id', $sender_id)->first();
-                        $last_message = Message::where(['sender_id' => $sender_id, 'receiver_id' => $receiver_id])
-                            ->orWhere(['sender_id' => $receiver_id, 'receiver_id' => $sender_id])->latest()->first();
-
-                        if ($differenceInDays > 1 || ($participant->last_deleted_message_id == $last_message->id)) {
+                        if ($differenceInDays > 1) {
                             $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
@@ -222,7 +214,7 @@ class MessageController extends Controller
 //create new message and singlemessage
     function createNewMessage($request, $sender_id, $receiver_id): bool
     {
-//        $messageStatus = Message::create([
+        //        $messageStatus = Message::create([
 //            'sender_id' => $sender_id,
 //            'receiver_id' => $receiver_id
 //        ]);
@@ -234,6 +226,8 @@ class MessageController extends Controller
             if ($setMessaged) {
                 $singleMessage = new SingleMessage();
                 $singleMessage->message_id = $messageStatus->id;
+                $singleMessage->sender_id = $sender_id;
+                $singleMessage->receiver_id = $receiver_id;
                 if ($request->has('message')) {
                     $singleMessage->message = $request->message;
                 }
@@ -309,9 +303,7 @@ class MessageController extends Controller
 //    message exists so create only single message
     function createSingleMessage($request, $sender_id, $receiver_id, $message_id): bool
     {
-
         try {
-
             $singleMessage = new SingleMessage();
             $singleMessage->message_id = $message_id;
             if ($request->has('message')) {
@@ -319,6 +311,8 @@ class MessageController extends Controller
             }
             $singleMessage->message_status = 'sent';
             $singleMessage->has_file = false;
+            $singleMessage->sender_id = $sender_id;
+            $singleMessage->receiver_id = $receiver_id;
             $saved = $singleMessage->save();
             if ($saved) {
                 if ($request->hasFile('files')) {
@@ -445,7 +439,7 @@ class MessageController extends Controller
 
 //get all messages
     public
-    function messageList(Request $request, $unique_id): JsonResponse
+    function messageList(Request $request, $unique_id)
     {
         $user_id = Auth::user()->id;
         $partner = User::where('unique_id', $unique_id)->first();
@@ -471,31 +465,58 @@ class MessageController extends Controller
         foreach ($removedMessages as $mgs) {
             array_push($removedMessagesIds, $mgs->single_message_id);
         }
-        $messages = Message::with(['singleMessages' => function ($query) use ($removedMessagesIds, $removedMessageFilesIds) {
-            $query->whereNotIn('id', $removedMessagesIds)->with(['messageFiles' => function ($query) use ($removedMessageFilesIds) {
-                $query->whereNotIn('id', $removedMessageFilesIds)
-                    ->with('media')->latest();
-            }])->latest();
+        $messages = Message::with(['singleMessages' => function ($query) use ($removedMessagesIds, $removedMessageFilesIds, $participant) {
+            $query->whereNotIn('id', $removedMessagesIds)
+                ->where('id', '>', $participant->last_deleted_message_id)
+                ->with(['messageFiles' => function ($query) use ($removedMessageFilesIds) {
+                    $query->whereNotIn('id', $removedMessageFilesIds)
+                        ->with('media')->latest();
+                }])->latest();
 
-        }])->where(function ($query) use ($user_id, $partner) {
+        }])->
+        where(function ($query) use ($user_id, $partner) {
             $query->where(['sender_id' => $user_id, 'receiver_id' => $partner->id])
                 ->orWhere(['sender_id' => $partner->id, 'receiver_id' => $user_id]);
         })
-            ->where('id', '>', $participant->last_deleted_message_id)
+            ->whereHas('singleMessages')
             ->latest()
             ->skip($skip)
             ->limit($limit)
             ->get();
-        $messagesByDate = [];
 
-        foreach ($messages as $message) {
+        $filteredData = [];
+        for ($i = 0; $i < count($messages); $i++) {
+            if (count($messages[$i]->singleMessages)) {
+                foreach ($messages[$i]->singleMessages as $mgs){
+                    if($mgs->sender_id==$partner->id){
+                        $mgs->message_status = 'seen';
+                        $mgs->save();
+                    }
+                }
+                array_push($filteredData, $messages[$i]);
+
+            }
+        }
+        $data = [];
+        foreach ($filteredData as $message) {
             $date = $message->created_at->format('Y-m-d'); // Format date as needed
-        $messagesByDate[$date][] = $message; // Append message to the corresponding date group
+
+            // Find or create the date object within the data array:
+            $dateIndex = array_search($date, array_column($data, 'date'));
+            if ($dateIndex === false) {
+                $data[] = ['date' => $date, 'messages' => []];
+                $dateIndex = count($data) - 1;
+            }
+            // Add the message to the corresponding date's messages:
+            $data[$dateIndex]['messages'][] = $message;
         }
 
-    return response()->json(['status' => true, 'messages' => $messagesByDate, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
 
+//return count($messages[1]->singleMessages);
+        return response()->json(['status' => true, 'data' => $data, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
+        //
     }
+
 
 //    clear messages
     public
@@ -528,11 +549,16 @@ class MessageController extends Controller
 
 
         $participant = ConversationParticipant::where('conversation_id', $conversation->id)->where('participant_id', $user_id)->first();
-        $last_message = Message::where(['sender_id' => $user_id, 'receiver_id' => $partner->id])
+        $last_message = SingleMessage::where(['sender_id' => $user_id, 'receiver_id' => $partner->id])
             ->orWhere(['sender_id' => $partner->id, 'receiver_id' => $user_id])->latest()->first();
         $participant->last_deleted_message_id = $last_message->id;
         $saveStatus = $participant->save();
         return $saveStatus;
 
+    }
+    public function test()
+    {
+        $date ="2024-01-07T16:37:51.000000Z";
+        $now = now();
     }
 }

@@ -64,8 +64,8 @@ class MessageControllerDraft extends Controller
             $old_conversation = Conversation::where($matchThese)->orWhere($orThose)->first();
             if ($old_conversation) {
                 //     checkout old message container
-                $senderMessageContainer = Message::where('sender_id', $sender_id)->latest()->first();
-                $receiverMessageContainer = Message::where('sender_id', $receiver_id)->latest()->first();
+                $senderMessageContainer = Message::where('sender_id', $sender_id)->where('receiver_id',$receiver_id)->latest()->first();
+                $receiverMessageContainer = Message::where('sender_id', $receiver_id)->where('receiver_id',$sender_id)->latest()->first();
                 if ($senderMessageContainer == null) {
                     $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
                     if ($messageStatus) {
@@ -94,7 +94,7 @@ class MessageControllerDraft extends Controller
 
                     if ($receiverMessageContainer) {
 
-                        if (($differenceInDays > 1) || ($receiverMessageContainer->id > $senderMessageContainer->id)) {
+                        if (($differenceInDays > 0) || ($receiverMessageContainer->id > $senderMessageContainer->id)) {
                             $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
@@ -131,7 +131,7 @@ class MessageControllerDraft extends Controller
                             }
                         }
                     } else {
-                        if ($differenceInDays > 1) {
+                        if ($differenceInDays > 0) {
                             $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
@@ -485,10 +485,16 @@ class MessageControllerDraft extends Controller
             ->get();
 
         $filteredData = [];
-
         for ($i = 0; $i < count($messages); $i++) {
             if (count($messages[$i]->singleMessages)) {
+                foreach ($messages[$i]->singleMessages as $mgs){
+                    if($mgs->sender_id==$partner->id){
+                        $mgs->message_status = 'seen';
+                        $mgs->save();
+                    }
+                }
                 array_push($filteredData, $messages[$i]);
+
             }
         }
         $data = [];
@@ -550,5 +556,9 @@ class MessageControllerDraft extends Controller
         return $saveStatus;
 
     }
-
+    public function test()
+    {
+        $date ="2024-01-07T16:37:51.000000Z";
+        $now = now();
+    }
 }
