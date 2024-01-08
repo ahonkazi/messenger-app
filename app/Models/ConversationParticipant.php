@@ -8,5 +8,11 @@ use Illuminate\Database\Eloquent\Model;
 class ConversationParticipant extends Model
 {
     use HasFactory;
-    protected $fillable = ["conversation_id","participant_id","last_typing","last_deleted_message_id"];
+
+    protected $fillable = ["conversation_id", "participant_id", "last_typing", "last_deleted_message_id"];
+
+    public function user_data()
+    {
+        return $this->belongsTo(User::class, 'participant_id');
+    }
 }

@@ -9,4 +9,8 @@ class Conversation extends Model
 {
     use HasFactory;
     protected $fillable = ["message","message_time","message_status","first_participant","second_participant","sender_id"];
+    public function participants()
+{
+    return $this->hasMany(ConversationParticipant::class, 'conversation_id');
+}
 }

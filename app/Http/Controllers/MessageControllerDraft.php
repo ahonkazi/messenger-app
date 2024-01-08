@@ -21,7 +21,7 @@ use function PHPUnit\Framework\isEmpty;
 class MessageControllerDraft extends Controller
 {
     //send message
-    public function sendMessage(createConversationRequest $request): JsonResponse
+    public function sendMessage(createConversationRequest $request)
     {
         $conversation_text = '';
         if (!$request->hasFile('files') && !$request->has('message')) {
@@ -54,184 +54,194 @@ class MessageControllerDraft extends Controller
             }
         }
         $sender_id = Auth::user()->id; //auth user
-        $receiver_id = User::where('unique_id', $request->unique_id)->first()->id; //from request
-        if ($receiver_id == null) {
+        $receiver = User::where('unique_id', $request->unique_id)->first(); //from request
+        if ($receiver == null) {
             return response()->json(['status' => false, 'message' => 'No User Found']);
-        } else {
+        }
+        $receiver_id = $receiver->id; //from request
 
-            $matchThese = ['first_participant' => $sender_id, 'second_participant' => $receiver_id];
-            // if you need another group of wheres as an alternative:
-            $orThose = ['first_participant' => $receiver_id, 'second_participant' => $sender_id];
-            $old_conversation = Conversation::where($matchThese)->orWhere($orThose)->first();
-            if ($old_conversation) {
-                $deletedConversationSender = DeleteConversation::where('conversation_id', $old_conversation->id)
-                    ->where('participant_id', $sender_id)->first();
-                if ($deletedConversationSender) {
-                    $deletedConversationSender->delete();
-                }
-                $deletedConversationReceiver = DeleteConversation::where('conversation_id', $old_conversation->id)
-                    ->where('participant_id', $receiver_id)->first();
-                if ($deletedConversationReceiver) {
-                    $deletedConversationReceiver->delete();
-                }
-                //     checkout old message container
-                $senderMessageContainer = Message::where('sender_id', $sender_id)->where('receiver_id', $receiver_id)->latest()->first();
-                $receiverMessageContainer = Message::where('sender_id', $receiver_id)->where('receiver_id', $sender_id)->latest()->first();
-                if ($senderMessageContainer == null) {
-                    $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
-                    if ($messageStatus) {
-                        $old_conversation->message = $conversation_text;
-                        $old_conversation->message_time = now();
-                        $old_conversation->sender_id = $sender_id;
-                        $updateStatus = $old_conversation->save();
-                        if ($updateStatus) {
-                            return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
-
-                        } else {
-                            return response()->json(['status' => false, 'message' => 'Something went wrong']);
-
-                        }
+        $old_conversation = Conversation::where(function ($query) use ($sender_id, $receiver_id) {
+            $query->where('first_participant', $sender_id)
+                ->where('second_participant', $receiver_id);
+        })->orWhere(function ($query) use ($sender_id, $receiver_id) {
+            $query->where('first_participant', $receiver_id)
+                ->where('second_participant', $sender_id);
+        })->first();
+        if ($old_conversation != null) {
+            $deletedConversationSender = DeleteConversation::where('conversation_id', $old_conversation->id)
+                ->where('participant_id', $sender_id)->first();
+            if ($deletedConversationSender) {
+                $deletedConversationSender->delete();
+            }
+            $deletedConversationReceiver = DeleteConversation::where('conversation_id', $old_conversation->id)
+                ->where('participant_id', $receiver_id)->first();
+            if ($deletedConversationReceiver) {
+                $deletedConversationReceiver->delete();
+            }
+            //     checkout old message container
+            $senderMessageContainer = Message::where('sender_id', $sender_id)->where('receiver_id', $receiver_id)->latest()->first();
+            $receiverMessageContainer = Message::where('sender_id', $receiver_id)->where('receiver_id', $sender_id)->latest()->first();
+            if ($senderMessageContainer == null) {
+                $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
+                if ($messageStatus) {
+                    $old_conversation->message = $conversation_text;
+                    $old_conversation->message_time = now();
+                    $old_conversation->sender_id = $sender_id;
+                    $old_conversation->message_status = 'sent';
+                    $updateStatus = $old_conversation->save();
+                    if ($updateStatus) {
+                        return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
 
                     } else {
                         return response()->json(['status' => false, 'message' => 'Something went wrong']);
+
                     }
+
                 } else {
-
-
-                    $date1 = new \DateTime($senderMessageContainer->created_at->format('y-m-d'));
-                    $date2 = new \DateTime(now()->format('y-m-d'));
-
-                    $interval = $date1->diff($date2);
-                    $differenceInDays = $interval->days;
-
-                    if ($receiverMessageContainer) {
-
-                        if (($differenceInDays > 0) || ($receiverMessageContainer->id > $senderMessageContainer->id)) {
-                            $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
-                            if ($messageStatus) {
-                                $old_conversation->message = $conversation_text;
-                                $old_conversation->message_time = now();
-                                $old_conversation->sender_id = $sender_id;
-
-                                $updateStatus = $old_conversation->save();
-                                if ($updateStatus) {
-                                    return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
-
-                                } else {
-                                    return response()->json(['status' => false, 'message' => 'Something went wrong']);
-
-                                }
-
-                            } else {
-                                return response()->json(['status' => false, 'message' => 'Something went wrong']);
-                            }
-                        } else {
-
-                            $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id);
-                            if ($messageStatus) {
-                                $old_conversation->message = $conversation_text;
-                                $old_conversation->message_time = now();
-                                $old_conversation->sender_id = $sender_id;
-
-                                $updateStatus = $old_conversation->save();
-                                if ($updateStatus) {
-                                    return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
-
-                                } else {
-                                    return response()->json(['status' => false, 'message' => 'Something went wrong']);
-
-                                }
-
-                            } else {
-                                return response()->json(['status' => false, 'message' => 'Something went wrong']);
-                            }
-                        }
-                    } else {
-                        if ($differenceInDays > 0) {
-                            $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
-                            if ($messageStatus) {
-                                $old_conversation->message = $conversation_text;
-                                $old_conversation->message_time = now();
-                                $old_conversation->sender_id = $sender_id;
-
-                                $updateStatus = $old_conversation->save();
-                                if ($updateStatus) {
-                                    return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
-
-                                } else {
-                                    return response()->json(['status' => false, 'message' => 'Something went wrong']);
-
-                                }
-
-                            } else {
-                                return response()->json(['status' => false, 'message' => 'Something went wrong']);
-                            }
-                        } else {
-
-                            $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id);
-                            if ($messageStatus) {
-                                $old_conversation->message = $conversation_text;
-                                $old_conversation->message_time = now();
-                                $old_conversation->sender_id = $sender_id;
-
-                                $updateStatus = $old_conversation->save();
-                                if ($updateStatus) {
-                                    return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
-
-                                } else {
-                                    return response()->json(['status' => false, 'message' => 'Something went wrong']);
-
-                                }
-
-                            } else {
-                                return response()->json(['status' => false, 'message' => 'Something went wrong']);
-                            }
-                        }
-                    }
+                    return response()->json(['status' => false, 'message' => 'Something went wrong']);
                 }
-
-
             } else {
-                $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
-                if ($messageStatus) {
-                    $newConversation = new Conversation();
-                    $newConversation->message = $conversation_text;
-                    $newConversation->message_time = now();
-                    $newConversation->first_participant = $sender_id;
-                    $newConversation->second_participant = $receiver_id;
-                    $newConversation->sender_id = $sender_id;
 
-                    $status = $newConversation->save();
-                    if ($status) {
-                        $sender_as_participant = new ConversationParticipant();
-                        $sender_as_participant->conversation_id = $newConversation->id;
-                        $sender_as_participant->participant_id = $sender_id;
-                        $sender_as_participant->last_typing = null;
-                        $status1 = $sender_as_participant->save();
-                        $receiver_as_participant = new ConversationParticipant();
-                        $receiver_as_participant->conversation_id = $newConversation->id;
-                        $receiver_as_participant->participant_id = $receiver_id;
-                        $receiver_as_participant->last_typing = null;
-                        $status2 = $receiver_as_participant->save();
-                        if ($status1 && $status2) {
-                            return response()->json(['status' => true, 'message' => 'Conversation created', 'data' => $newConversation]);
+
+                $date1 = new \DateTime($senderMessageContainer->created_at->format('y-m-d'));
+                $date2 = new \DateTime(now()->format('y-m-d'));
+
+                $interval = $date1->diff($date2);
+                $differenceInDays = $interval->days;
+
+                if ($receiverMessageContainer) {
+
+                    if (($differenceInDays > 0) || ($receiverMessageContainer->id > $senderMessageContainer->id)) {
+                        $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
+                        if ($messageStatus) {
+                            $old_conversation->message = $conversation_text;
+                            $old_conversation->message_time = now();
+                            $old_conversation->sender_id = $sender_id;
+                            $old_conversation->message_status = 'sent';
+
+                            $updateStatus = $old_conversation->save();
+                            if ($updateStatus) {
+                                return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
+
+                            } else {
+                                return response()->json(['status' => false, 'message' => 'Something went wrong']);
+
+                            }
 
                         } else {
                             return response()->json(['status' => false, 'message' => 'Something went wrong']);
-
                         }
+                    } else {
+
+                        $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id);
+                        if ($messageStatus) {
+                            $old_conversation->message = $conversation_text;
+                            $old_conversation->message_time = now();
+                            $old_conversation->sender_id = $sender_id;
+                            $old_conversation->message_status = 'sent';
+
+                            $updateStatus = $old_conversation->save();
+                            if ($updateStatus) {
+                                return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
+
+                            } else {
+                                return response()->json(['status' => false, 'message' => 'Something went wrong']);
+
+                            }
+
+                        } else {
+                            return response()->json(['status' => false, 'message' => 'Something went wrong']);
+                        }
+                    }
+                } else {
+                    if ($differenceInDays > 0) {
+                        $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
+                        if ($messageStatus) {
+                            $old_conversation->message = $conversation_text;
+                            $old_conversation->message_time = now();
+                            $old_conversation->sender_id = $sender_id;
+                            $old_conversation->message_status = 'sent';
+
+                            $updateStatus = $old_conversation->save();
+                            if ($updateStatus) {
+                                return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
+
+                            } else {
+                                return response()->json(['status' => false, 'message' => 'Something went wrong']);
+
+                            }
+
+                        } else {
+                            return response()->json(['status' => false, 'message' => 'Something went wrong']);
+                        }
+                    } else {
+
+                        $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id);
+                        if ($messageStatus) {
+                            $old_conversation->message = $conversation_text;
+                            $old_conversation->message_time = now();
+                            $old_conversation->sender_id = $sender_id;
+                            $old_conversation->message_status = 'sent';
+
+                            $updateStatus = $old_conversation->save();
+                            if ($updateStatus) {
+                                return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
+
+                            } else {
+                                return response()->json(['status' => false, 'message' => 'Something went wrong']);
+
+                            }
+
+                        } else {
+                            return response()->json(['status' => false, 'message' => 'Something went wrong']);
+                        }
+                    }
+                }
+            }
+
+
+        } else {
+            $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
+            if ($messageStatus) {
+                $newConversation = new Conversation();
+                $newConversation->message = $conversation_text;
+                $newConversation->message_time = now();
+                $newConversation->first_participant = $sender_id;
+                $newConversation->second_participant = $receiver_id;
+                $newConversation->sender_id = $sender_id;
+                $newConversation->message_status = 'sent';
+
+                $status = $newConversation->save();
+                if ($status) {
+                    $sender_as_participant = new ConversationParticipant();
+                    $sender_as_participant->conversation_id = $newConversation->id;
+                    $sender_as_participant->participant_id = $sender_id;
+                    $sender_as_participant->last_typing = null;
+                    $status1 = $sender_as_participant->save();
+                    $receiver_as_participant = new ConversationParticipant();
+                    $receiver_as_participant->conversation_id = $newConversation->id;
+                    $receiver_as_participant->participant_id = $receiver_id;
+                    $receiver_as_participant->last_typing = null;
+                    $status2 = $receiver_as_participant->save();
+                    if ($status1 && $status2) {
+                        return response()->json(['status' => true, 'message' => 'Conversation created', 'data' => $newConversation]);
+
                     } else {
                         return response()->json(['status' => false, 'message' => 'Something went wrong']);
 
                     }
                 } else {
                     return response()->json(['status' => false, 'message' => 'Something went wrong']);
+
                 }
-
-
+            } else {
+                return response()->json(['status' => false, 'message' => 'Something went wrong']);
             }
+
+
         }
     }
+
 
 //create new message and singlemessage
     function createNewMessage($request, $sender_id, $receiver_id): bool
@@ -461,7 +471,7 @@ class MessageControllerDraft extends Controller
 
 //get all messages
     public
-    function messageList(Request $request, $unique_id)
+    function messageList(Request $request, $unique_id): JsonResponse
     {
         $user_id = Auth::user()->id;
         $partner = User::where('unique_id', $unique_id)->first();
@@ -595,7 +605,7 @@ class MessageControllerDraft extends Controller
         $now = now();
     }
 
-    public function deleteConversation(Request $request, $unique_id)
+    public function deleteConversation(Request $request, $unique_id): JsonResponse
     {
         $user_id = Auth::user()->id;
         $partner = User::where('unique_id', $unique_id)->first();
@@ -622,5 +632,33 @@ class MessageControllerDraft extends Controller
             return response()->json(['status' => false, 'messages' => 'Something went wrong'], 500);
 
         }
+    }
+
+    public function loadConveration(Request $request)
+    {
+        $limit = (int)$request->input('per_page', 2);
+        $offset = (int)$request->input('page', 1);
+        $skip = $limit * ($offset - 1);
+        $user_id = Auth::user()->id;
+        $removedConversation = DeleteConversation::all()->where('participant_id', $user_id);
+        $removedConversationIds = [];
+        if ($removedConversation) {
+            foreach ($removedConversation as $conv) {
+                array_push($removedConversationIds, $conv->conversation_id);
+            }
+        }
+        $conversations = Conversation::with(['participants' => function ($query) use ($user_id) {
+            $query->where('participant_id', '!=', $user_id)
+                ->with('user_data');
+        }])
+            ->where(function ($query) use ($user_id) {
+                $query->where('first_participant', $user_id)
+                    ->orWhere('second_participant', $user_id);
+            })
+            ->whereNotIn('id', $removedConversationIds)
+            ->latest('message_time')->get();
+
+        return response()->json(['status' => true, 'data' => $conversations, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
+
     }
 }
