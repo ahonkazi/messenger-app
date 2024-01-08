@@ -27,6 +27,7 @@ Route::prefix('/message')->group(function () {
         Route::delete('/delete/file/{id}', [\App\Http\Controllers\MessageControllerDraft::class, 'deleteFileForMe']);
         Route::get('/messages/{unique_id}', [\App\Http\Controllers\MessageControllerDraft::class, 'messageList']);
         Route::delete('/conversation/clear/{unique_id}', [\App\Http\Controllers\MessageControllerDraft::class, 'clearConversationForMe']);
+        Route::delete('/conversation/delete/{unique_id}', [\App\Http\Controllers\MessageControllerDraft::class, 'deleteConversation']);
 
     });
 

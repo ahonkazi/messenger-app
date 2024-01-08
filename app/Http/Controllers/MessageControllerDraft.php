@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\createConversationRequest;
 use App\Models\Conversation;
 use App\Models\ConversationParticipant;
+use App\Models\DeleteConversation;
 use App\Models\DeleteMessage;
 use App\Models\DeleteMessageFile;
 use App\Models\Media;
@@ -63,14 +64,25 @@ class MessageControllerDraft extends Controller
             $orThose = ['first_participant' => $receiver_id, 'second_participant' => $sender_id];
             $old_conversation = Conversation::where($matchThese)->orWhere($orThose)->first();
             if ($old_conversation) {
+                $deletedConversationSender = DeleteConversation::where('conversation_id', $old_conversation->id)
+                    ->where('participant_id', $sender_id)->first();
+                if ($deletedConversationSender) {
+                    $deletedConversationSender->delete();
+                }
+                $deletedConversationReceiver = DeleteConversation::where('conversation_id', $old_conversation->id)
+                    ->where('participant_id', $receiver_id)->first();
+                if ($deletedConversationReceiver) {
+                    $deletedConversationReceiver->delete();
+                }
                 //     checkout old message container
-                $senderMessageContainer = Message::where('sender_id', $sender_id)->where('receiver_id',$receiver_id)->latest()->first();
-                $receiverMessageContainer = Message::where('sender_id', $receiver_id)->where('receiver_id',$sender_id)->latest()->first();
+                $senderMessageContainer = Message::where('sender_id', $sender_id)->where('receiver_id', $receiver_id)->latest()->first();
+                $receiverMessageContainer = Message::where('sender_id', $receiver_id)->where('receiver_id', $sender_id)->latest()->first();
                 if ($senderMessageContainer == null) {
                     $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
                     if ($messageStatus) {
                         $old_conversation->message = $conversation_text;
                         $old_conversation->message_time = now();
+                        $old_conversation->sender_id = $sender_id;
                         $updateStatus = $old_conversation->save();
                         if ($updateStatus) {
                             return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
@@ -99,6 +111,8 @@ class MessageControllerDraft extends Controller
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
                                 $old_conversation->message_time = now();
+                                $old_conversation->sender_id = $sender_id;
+
                                 $updateStatus = $old_conversation->save();
                                 if ($updateStatus) {
                                     return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
@@ -117,6 +131,8 @@ class MessageControllerDraft extends Controller
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
                                 $old_conversation->message_time = now();
+                                $old_conversation->sender_id = $sender_id;
+
                                 $updateStatus = $old_conversation->save();
                                 if ($updateStatus) {
                                     return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
@@ -136,6 +152,8 @@ class MessageControllerDraft extends Controller
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
                                 $old_conversation->message_time = now();
+                                $old_conversation->sender_id = $sender_id;
+
                                 $updateStatus = $old_conversation->save();
                                 if ($updateStatus) {
                                     return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
@@ -154,6 +172,8 @@ class MessageControllerDraft extends Controller
                             if ($messageStatus) {
                                 $old_conversation->message = $conversation_text;
                                 $old_conversation->message_time = now();
+                                $old_conversation->sender_id = $sender_id;
+
                                 $updateStatus = $old_conversation->save();
                                 if ($updateStatus) {
                                     return response()->json(['status' => true, 'message' => 'Message sent', 'data' => $old_conversation]);
@@ -179,6 +199,8 @@ class MessageControllerDraft extends Controller
                     $newConversation->message_time = now();
                     $newConversation->first_participant = $sender_id;
                     $newConversation->second_participant = $receiver_id;
+                    $newConversation->sender_id = $sender_id;
+
                     $status = $newConversation->save();
                     if ($status) {
                         $sender_as_participant = new ConversationParticipant();
@@ -451,19 +473,26 @@ class MessageControllerDraft extends Controller
         if ($conversation == null) {
             return response()->json(['status' => false, 'messages' => 'No Conversation found,please create one'], 200);
         }
+        $limit = (int)$request->input('per_page', 2);
+        $offset = (int)$request->input('page', 1);
+        $skip = $limit * ($offset - 1);
         $participant = ConversationParticipant::where('conversation_id', $conversation->id)->where('participant_id', $user_id)->first();
         $removedMessages = DeleteMessage::all()->where('participant_id', $user_id);
         $removedMessagesIds = [];
         $removedMessageFiles = DeleteMessageFile::all()->where('participant_id', $user_id);
         $removedMessageFilesIds = [];
-        $limit = (int)$request->input('per_page', 2);
-        $offset = (int)$request->input('page', 1);
-        $skip = $limit * ($offset - 1);
-        foreach ($removedMessageFiles as $mgsFile) {
-            array_push($removedMessageFilesIds, $mgsFile->message_file_id);
+
+        if ($removedMessageFiles) {
+            foreach ($removedMessageFiles as $mgsFile) {
+                array_push($removedMessageFilesIds, $mgsFile->message_file_id);
+            }
         }
-        foreach ($removedMessages as $mgs) {
-            array_push($removedMessagesIds, $mgs->single_message_id);
+        if ($removedMessages) {
+            foreach ($removedMessages as $mgs) {
+                if ($mgs) {
+                    array_push($removedMessagesIds, $mgs->single_message_id);
+                }
+            }
         }
         $messages = Message::with(['singleMessages' => function ($query) use ($removedMessagesIds, $removedMessageFilesIds, $participant) {
             $query->whereNotIn('id', $removedMessagesIds)
@@ -487,8 +516,8 @@ class MessageControllerDraft extends Controller
         $filteredData = [];
         for ($i = 0; $i < count($messages); $i++) {
             if (count($messages[$i]->singleMessages)) {
-                foreach ($messages[$i]->singleMessages as $mgs){
-                    if($mgs->sender_id==$partner->id){
+                foreach ($messages[$i]->singleMessages as $mgs) {
+                    if ($mgs->sender_id == $partner->id) {
                         $mgs->message_status = 'seen';
                         $mgs->save();
                     }
@@ -510,7 +539,10 @@ class MessageControllerDraft extends Controller
             // Add the message to the corresponding date's messages:
             $data[$dateIndex]['messages'][] = $message;
         }
-
+        if ($conversation->sender_id == $partner->id) {
+            $conversation->message_status = 'seen';
+            $conversation->save();
+        }
 
 //return count($messages[1]->singleMessages);
         return response()->json(['status' => true, 'data' => $data, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
@@ -556,9 +588,39 @@ class MessageControllerDraft extends Controller
         return $saveStatus;
 
     }
+
     public function test()
     {
-        $date ="2024-01-07T16:37:51.000000Z";
+        $date = "2024-01-07T16:37:51.000000Z";
         $now = now();
+    }
+
+    public function deleteConversation(Request $request, $unique_id)
+    {
+        $user_id = Auth::user()->id;
+        $partner = User::where('unique_id', $unique_id)->first();
+        if ($partner == null) {
+            return response()->json(['status' => false, 'messages' => 'No partner found'], 200);
+        }
+        $conversation = Conversation::where(['first_participant' => $user_id, 'second_participant' => $partner->id])
+            ->orWhere(['first_participant' => $partner->id, 'second_participant' => $user_id])->first();
+        if ($conversation == null) {
+            return response()->json(['status' => false, 'messages' => 'No Conversation found,please create one'], 200);
+        }
+        $clearStatus = $this->clearConversation($user_id, $partner, $conversation);
+        $deletedConversation = DeleteConversation::where(['conversation_id' => $conversation->id, 'participant_id' => $user_id])->first();
+        if ($deletedConversation == null) {
+            DeleteConversation::create([
+                'conversation_id' => $conversation->id,
+                'participant_id' => $user_id
+            ]);
+        }
+        if ($clearStatus) {
+            return response()->json(['status' => true, 'messages' => 'Conversation deleted'], 200);
+
+        } else {
+            return response()->json(['status' => false, 'messages' => 'Something went wrong'], 500);
+
+        }
     }
 }
