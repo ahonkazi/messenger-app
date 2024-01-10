@@ -19,3 +19,12 @@ function UploadFile($prefix = 'messenger-img', $file, $path = 'files')
         return false;
     }
 }
+
+function removeFile($filePath)
+{
+    $fullpath = storage_path('app/public' . $filePath);
+    if (\Illuminate\Support\Facades\File::exists($fullpath)) {
+        unlink($fullpath);
+    }
+    return true;
+}

@@ -24,6 +24,7 @@ Route::prefix('/message')->group(function () {
     Route::middleware(['withAuth'])->group(function () {
         Route::post('/send', [\App\Http\Controllers\MessageControllerDraft::class, 'sendMessage']);
         Route::delete('/delete/{id}', [\App\Http\Controllers\MessageControllerDraft::class, 'deleteForMe']);
+        Route::delete('/unsent/{unique_id}/{mgs_id}', [\App\Http\Controllers\MessageControllerDraft::class, 'unsentMessage']);
         Route::delete('/delete/file/{id}', [\App\Http\Controllers\MessageControllerDraft::class, 'deleteFileForMe']);
         Route::get('/messages/{unique_id}', [\App\Http\Controllers\MessageControllerDraft::class, 'messageList']);
         Route::delete('/conversations/clear/{unique_id}', [\App\Http\Controllers\MessageControllerDraft::class, 'clearConversationForMe']);

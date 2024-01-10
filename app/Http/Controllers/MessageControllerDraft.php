@@ -512,12 +512,15 @@ class MessageControllerDraft extends Controller
                         ->with('media')->latest();
                 }])->latest();
 
-        }])->
-        where(function ($query) use ($user_id, $partner) {
-            $query->where(['sender_id' => $user_id, 'receiver_id' => $partner->id])
-                ->orWhere(['sender_id' => $partner->id, 'receiver_id' => $user_id]);
-        })
-            ->whereHas('singleMessages')
+        }])
+            ->where(function ($query) use ($user_id, $partner) {
+                $query->where('sender_id', $user_id)->where('receiver_id', $partner->id);
+
+            })->orWhere(function ($query) use ($user_id, $partner) {
+                $query->where('sender_id', $partner->id)->where('receiver_id', $user_id);
+            })
+
+//            ->whereHas('singleMessages')
             ->latest()
             ->skip($skip)
             ->limit($limit)
@@ -660,5 +663,64 @@ class MessageControllerDraft extends Controller
 
         return response()->json(['status' => true, 'data' => $conversations, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
 
+    }
+
+    public function unsentMessage(Request $request, $unique_id, $mgs_id): JsonResponse
+    {
+        try {
+
+            $user_id = Auth::user()->id;
+            $receiver = User::where('unique_id', $unique_id)->first();
+            if ($receiver == null) {
+                return response()->json(['status' => false, 'message' => 'No account found'], 404);
+            }
+            $receiver_id = $receiver->id;
+            $mgs = SingleMessage::where('id', $mgs_id)->where('sender_id', $user_id)->first();
+            $lastMessage = SingleMessage::where('sender_id', $user_id)->where('receiver_id', $receiver_id)->latest()->first();
+            if ($mgs == null) {
+                return response()->json(['status' => false, 'message' => 'No message found'], 404);
+            }
+            $time = $mgs->created_at;
+            if (now()->timestamp - $time->timestamp > 18000) {
+                return response()->json(['status' => false, 'message' => "You can't unsent now"], 500);
+
+            }
+            $old_conversation = Conversation::where(function ($query) use ($user_id, $receiver_id) {
+                $query->where('first_participant', $user_id)
+                    ->where('second_participant', $receiver_id);
+            })->orWhere(function ($query) use ($user_id, $receiver_id) {
+                $query->where('first_participant', $receiver_id)
+                    ->where('second_participant', $user_id);
+            })->first();
+            if ($mgs->has_file) {
+                $mgs_files = MessageFile::all()->where('single_message_id', $mgs->id);
+                if ($mgs_files != null) {
+                    foreach ($mgs_files as $file) {
+                        $mediaId = $file->media_id;
+                        $file->delete();
+                        $media = Media::where('id', $mediaId)->first();
+                        $url = $media->url;
+                        removeFile($url);
+                        $media->delete();
+
+                    }
+                }
+
+            }
+            $mgs->has_file = false;
+            $mgs->message = 'unsent a message';
+            $mgs->unsent = true;
+            $mgs->save();
+
+            if ($lastMessage) {
+                if ($mgs->id == $lastMessage->id) {
+                    $old_conversation->message = 'unsent a message';
+                }
+            }
+            return response()->json(['status' => true, 'message' => 'Message removed'], 200);
+
+        } catch (\Exception $exception) {
+            return response()->json(['status' => false, 'message' => 'Something went wrong'], 500);
+        }
     }
 }
