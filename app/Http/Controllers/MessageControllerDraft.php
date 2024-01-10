@@ -82,9 +82,9 @@ class MessageControllerDraft extends Controller
             $senderMessageContainer = Message::where('sender_id', $sender_id)->where('receiver_id', $receiver_id)->latest()->first();
             $receiverMessageContainer = Message::where('sender_id', $receiver_id)->where('receiver_id', $sender_id)->latest()->first();
             if ($senderMessageContainer == null) {
-                $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
+                $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id, $old_conversation->id);
                 if ($messageStatus) {
-                    $old_conversation->message = $conversation_text;
+                    $old_conversation->message = null;
                     $old_conversation->message_time = now();
                     $old_conversation->sender_id = $sender_id;
                     $old_conversation->message_status = 'sent';
@@ -112,9 +112,9 @@ class MessageControllerDraft extends Controller
                 if ($receiverMessageContainer) {
 
                     if (($differenceInDays > 0) || ($receiverMessageContainer->id > $senderMessageContainer->id)) {
-                        $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
+                        $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id, $old_conversation->id);
                         if ($messageStatus) {
-                            $old_conversation->message = $conversation_text;
+                            $old_conversation->message = null;
                             $old_conversation->message_time = now();
                             $old_conversation->sender_id = $sender_id;
                             $old_conversation->message_status = 'sent';
@@ -133,9 +133,9 @@ class MessageControllerDraft extends Controller
                         }
                     } else {
 
-                        $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id);
+                        $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id, $old_conversation->id);
                         if ($messageStatus) {
-                            $old_conversation->message = $conversation_text;
+                            $old_conversation->message = null;
                             $old_conversation->message_time = now();
                             $old_conversation->sender_id = $sender_id;
                             $old_conversation->message_status = 'sent';
@@ -155,9 +155,9 @@ class MessageControllerDraft extends Controller
                     }
                 } else {
                     if ($differenceInDays > 0) {
-                        $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
+                        $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id, $old_conversation->id);
                         if ($messageStatus) {
-                            $old_conversation->message = $conversation_text;
+                            $old_conversation->message = null;
                             $old_conversation->message_time = now();
                             $old_conversation->sender_id = $sender_id;
                             $old_conversation->message_status = 'sent';
@@ -176,9 +176,9 @@ class MessageControllerDraft extends Controller
                         }
                     } else {
 
-                        $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id);
+                        $messageStatus = $this->createSingleMessage($request, $sender_id, $receiver_id, $senderMessageContainer->id, $old_conversation->id);
                         if ($messageStatus) {
-                            $old_conversation->message = $conversation_text;
+                            $old_conversation->message = null;
                             $old_conversation->message_time = now();
                             $old_conversation->sender_id = $sender_id;
                             $old_conversation->message_status = 'sent';
@@ -201,41 +201,44 @@ class MessageControllerDraft extends Controller
 
 
         } else {
-            $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id);
-            if ($messageStatus) {
-                $newConversation = new Conversation();
-                $newConversation->message = $conversation_text;
-                $newConversation->message_time = now();
-                $newConversation->first_participant = $sender_id;
-                $newConversation->second_participant = $receiver_id;
-                $newConversation->sender_id = $sender_id;
-                $newConversation->message_status = 'sent';
 
-                $status = $newConversation->save();
-                if ($status) {
-                    $sender_as_participant = new ConversationParticipant();
-                    $sender_as_participant->conversation_id = $newConversation->id;
-                    $sender_as_participant->participant_id = $sender_id;
-                    $sender_as_participant->last_typing = null;
-                    $status1 = $sender_as_participant->save();
-                    $receiver_as_participant = new ConversationParticipant();
-                    $receiver_as_participant->conversation_id = $newConversation->id;
-                    $receiver_as_participant->participant_id = $receiver_id;
-                    $receiver_as_participant->last_typing = null;
-                    $status2 = $receiver_as_participant->save();
-                    if ($status1 && $status2) {
+            $newConversation = new Conversation();
+            $newConversation->message = null;
+            $newConversation->message_time = now();
+            $newConversation->first_participant = $sender_id;
+            $newConversation->second_participant = $receiver_id;
+            $newConversation->sender_id = $sender_id;
+            $newConversation->message_status = 'sent';
+
+            $status = $newConversation->save();
+            if ($status) {
+                $sender_as_participant = new ConversationParticipant();
+                $sender_as_participant->conversation_id = $newConversation->id;
+                $sender_as_participant->participant_id = $sender_id;
+                $sender_as_participant->last_typing = null;
+                $status1 = $sender_as_participant->save();
+                $receiver_as_participant = new ConversationParticipant();
+                $receiver_as_participant->conversation_id = $newConversation->id;
+                $receiver_as_participant->participant_id = $receiver_id;
+                $receiver_as_participant->last_typing = null;
+                $status2 = $receiver_as_participant->save();
+                if ($status1 && $status2) {
+                    $messageStatus = $this->createNewMessage($request, $sender_id, $receiver_id, $newConversation->id);
+                    if ($messageStatus) {
                         return response()->json(['status' => true, 'message' => 'Conversation created', 'data' => $newConversation]);
 
                     } else {
                         return response()->json(['status' => false, 'message' => 'Something went wrong']);
 
                     }
+
                 } else {
                     return response()->json(['status' => false, 'message' => 'Something went wrong']);
 
                 }
             } else {
                 return response()->json(['status' => false, 'message' => 'Something went wrong']);
+
             }
 
 
@@ -244,7 +247,7 @@ class MessageControllerDraft extends Controller
 
 
 //create new message and singlemessage
-    function createNewMessage($request, $sender_id, $receiver_id): bool
+    function createNewMessage($request, $sender_id, $receiver_id, $conversation_id): bool
     {
 //        $messageStatus = Message::create([
 //            'sender_id' => $sender_id,
@@ -260,6 +263,7 @@ class MessageControllerDraft extends Controller
                 $singleMessage->message_id = $messageStatus->id;
                 $singleMessage->sender_id = $sender_id;
                 $singleMessage->receiver_id = $receiver_id;
+                $singleMessage->conversation_id = $conversation_id;
                 if ($request->has('message')) {
                     $singleMessage->message = $request->message;
                 }
@@ -333,7 +337,7 @@ class MessageControllerDraft extends Controller
     }
 
 //    message exists so create only single message
-    function createSingleMessage($request, $sender_id, $receiver_id, $message_id): bool
+    function createSingleMessage($request, $sender_id, $receiver_id, $message_id, $conversation_id): bool
     {
         try {
             $singleMessage = new SingleMessage();
@@ -345,6 +349,8 @@ class MessageControllerDraft extends Controller
             $singleMessage->has_file = false;
             $singleMessage->sender_id = $sender_id;
             $singleMessage->receiver_id = $receiver_id;
+            $singleMessage->conversation_id = $conversation_id;
+
             $saved = $singleMessage->save();
             if ($saved) {
                 if ($request->hasFile('files')) {
@@ -478,8 +484,13 @@ class MessageControllerDraft extends Controller
         if ($partner == null) {
             return response()->json(['status' => false, 'messages' => 'No partner found'], 200);
         }
-        $conversation = Conversation::where(['first_participant' => $user_id, 'second_participant' => $partner->id])
-            ->orWhere(['first_participant' => $partner->id, 'second_participant' => $user_id])->first();
+        $conversation = Conversation::where(function ($query) use ($user_id, $partner) {
+            $query->where('first_participant', $user_id)->where('second_participant', $partner->id);
+        })
+            ->orWhere(function ($query) use ($user_id, $partner) {
+                $query->where('first_participant', $partner->id)->where('second_participant', $user_id);
+
+            })->first();
         if ($conversation == null) {
             return response()->json(['status' => false, 'messages' => 'No Conversation found,please create one'], 200);
         }
@@ -487,6 +498,9 @@ class MessageControllerDraft extends Controller
         $offset = (int)$request->input('page', 1);
         $skip = $limit * ($offset - 1);
         $participant = ConversationParticipant::where('conversation_id', $conversation->id)->where('participant_id', $user_id)->first();
+        if ($participant == null) {
+            return response()->json(['status' => false, 'messages' => 'No participant partner found'], 200);
+        }
         $removedMessages = DeleteMessage::all()->where('participant_id', $user_id);
         $removedMessagesIds = [];
         $removedMessageFiles = DeleteMessageFile::all()->where('participant_id', $user_id);
@@ -644,23 +658,36 @@ class MessageControllerDraft extends Controller
         $skip = $limit * ($offset - 1);
         $user_id = Auth::user()->id;
         $removedConversation = DeleteConversation::all()->where('participant_id', $user_id);
+        $removedMessages = DeleteMessage::all()->where('participant_id', $user_id);
+
         $removedConversationIds = [];
         if ($removedConversation) {
             foreach ($removedConversation as $conv) {
                 array_push($removedConversationIds, $conv->conversation_id);
             }
         }
+        $removedMgsIds = [];
+        if ($removedMessages) {
+            foreach ($removedMessages as $mgs) {
+                array_push($removedMgsIds, $mgs->single_message_id);
+            }
+        }
         $conversations = Conversation::with(['participants' => function ($query) use ($user_id) {
             $query->where('participant_id', '!=', $user_id)
                 ->with('user_data');
         }])
+            ->with(['lastMessage' => function ($query) use ($removedMgsIds) {
+                $query->whereNotIn('id', $removedMgsIds)->latest('created_at')->first();
+            }])
             ->where(function ($query) use ($user_id) {
                 $query->where('first_participant', $user_id)
                     ->orWhere('second_participant', $user_id);
             })
             ->whereNotIn('id', $removedConversationIds)
-            ->latest('message_time')->get();
-
+            ->latest('message_time')
+            ->skip($skip)
+            ->limit($limit)
+            ->get();
         return response()->json(['status' => true, 'data' => $conversations, 'page_data' => ['per_page' => $limit, 'current_page' => $offset, 'next_page' => $offset + 1, 'skiped' => $skip]], 200);
 
     }
