@@ -11,10 +11,14 @@ class Conversation extends Model
 
     protected $fillable = ["message", "message_time", "message_status", "first_participant", "second_participant", "sender_id"];
 
-    public function participants()
+    public function you()
     {
-        return $this->hasMany(ConversationParticipant::class, 'conversation_id');
+        return $this->hasOne(ConversationParticipant::class, 'conversation_id');
     }
+      public function partner()
+      {
+          return $this->hasOne(ConversationParticipant::class, 'conversation_id');
+      }
     public function lastMessage()
     {
         return $this->hasOne(SingleMessage::class)->latest();
