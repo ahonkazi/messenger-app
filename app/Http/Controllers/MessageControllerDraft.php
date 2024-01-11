@@ -247,7 +247,7 @@ class MessageControllerDraft extends Controller
 
 
 //create new message and singlemessage
-    function createNewMessage($request, $sender_id, $receiver_id, $conversation_id): bool
+    function createNewMessage($request, $sender_id, $receiver_id, $conversation_id,$text): bool
     {
 //        $messageStatus = Message::create([
 //            'sender_id' => $sender_id,
@@ -258,7 +258,7 @@ class MessageControllerDraft extends Controller
         $messageStatus->receiver_id = $receiver_id;
         $setMessaged = $messageStatus->save();
         try {
-            $pertcipants = ConversationParticipant::all()->where('conversation_id', $conversation_id, $text);
+            $pertcipants = ConversationParticipant::all()->where('conversation_id', $conversation_id);
             if ($pertcipants == null) {
                 $messageStatus->delete();
                 return false;
@@ -281,9 +281,7 @@ class MessageControllerDraft extends Controller
                 $singleMessage->sender_id = $sender_id;
                 $singleMessage->receiver_id = $receiver_id;
                 $singleMessage->conversation_id = $conversation_id;
-
                 $singleMessage->message = $text;
-
                 $singleMessage->message_status = 'sent';
                 $singleMessage->has_file = false;
                 $saved = $singleMessage->save();
